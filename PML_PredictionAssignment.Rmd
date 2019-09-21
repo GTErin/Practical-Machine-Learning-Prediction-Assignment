@@ -1,0 +1,118 @@
+---
+title: "Practical Machine Learning Project"
+author: "Erin Kennedy"
+date: "September 21, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Background
+#####Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+###Data
+#####The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+#####The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+#####The data for this project come from this source:
+
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. 
+
+#####Please cite this source if you use this data as they have been very generous in allowing their data to be used for this kind of assignment.
+
+###Executive Summary
+#####The goal of this project was to predict the manner in which exercise occurred with the given data. This was accomplished using the "classe" variable in the training set. After cleaning the data up I split the data up for cross validation purposes with a 70/30 split. I then built two models,a Decision Tree Model and a Random Forest Model, and used a confusion matrix to determine their respective out of sample errors. For the Decision Tree model the out of sample error was determined to be approximately 27% and for the Random Forest Model the error was only 0.56%. Based on this comparison of accuracy I used the Random Forest Model as my prediction model of choice to predict the 20 test cases.
+
+```{r}
+##Load required packages
+suppressWarnings(suppressMessages(library(caret)))
+suppressWarnings(suppressMessages(library(rpart)))
+suppressWarnings(suppressMessages(library(rpart.plot)))
+suppressWarnings(suppressMessages(library(randomForest)))
+
+##Set the seed to ensure reproducibility
+set.seed(4444)
+```
+
+###Load and Clean Data
+```{r}
+trainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainData <- read.csv(url(trainURL), na.strings=c("NA", "","#DIV/0!"))
+testData <- read.csv(url(testURL), na.strings=c("NA", "","#DIV/0!"))
+
+##Remove variables that are not predictors and therefore not needed to reduce the amount of data being read.
+trainData <- trainData[, -c(1:7)]
+testData <- testData [, -c(1:7)]
+
+##Remove variables with near zero variance as those would not be good predictors
+nearZeroTrain <- nearZeroVar(trainData)
+trainData <- trainData[, -nearZeroTrain]
+nearZeroTest <- nearZeroVar(testData)
+testData <- testData[, -nearZeroTest]
+
+##Remove variables with mostly NA, blank or div by 0 values as those will also not be good predictors
+trainDataNoNA <- trainData[, sapply(trainData, function (x) ! (any(is.na(x) | x== "" | x== "#DIV/0!")))]
+testDataNoNA <- testData[, sapply(testData, function (x) ! (any(is.na(x) | x== "" | x== "#DIV/0!")))]
+```
+
+###Create a Cross Validation Dataset
+```{r}
+inTrain <- createDataPartition(trainDataNoNA$classe, p=0.7, list=FALSE)
+train_data <- trainDataNoNA[inTrain, ]
+val_data <- trainDataNoNA[-inTrain, ]
+```
+
+###Create the Prediction Model
+#####Two methods will be used to model the regression in the training data set and the one with the higher accuracy against the validation data set will be used for the quiz. I will be using a confusion matrix which is a table that is often used to describe the performance of a classification model (or "classifier") on a set of test data for which the true values are known. It allows the visualization of the performance of an algorithm. It allows easy identification of confusion between classes e.g. one class is commonly mislabeled as the other. Most performance measures are computed from the confusion matrix. I will construct prection models from the Decision Tree Model and Random Forest Model.
+
+#####1. Decision Tree Model
+```{r}
+set.seed(4444)
+
+##Fit the model
+DecTreeModel <- rpart(classe ~ . ,data=train_data, method="class")
+rpart.plot(DecTreeModel)
+
+##Use the validation portion of the training data set for prediction.
+predictionDecTree <- predict(DecTreeModel, newdata=val_data, type="class")
+confMatrixDT <- confusionMatrix(predictionDecTree, val_data$classe)
+confMatrixDT
+```
+
+#####The predicted accuracy of this Decision Tree Model was only 73.08% which is relatively low. Now we will use a random forest model and see what it's accuracy is using the confusion matrix.
+
+#####2. Random Forest Model
+```{r}
+set.seed(4444)
+
+##Fit the model
+RanForModel <- randomForest(classe ~ . , data=train_data, importance=TRUE)
+RanForModel
+```
+#####The number of trees is 500 and number of variables tried at each split is 7 in this case. Error rate is 0.54% which is good. Now I will use this to predict on the validation data and check it's accuracy.
+
+```{r}
+##Use the validation portion of the training data set for prediction.
+predictionRanFor <- predict(RanForModel, newdata=val_data, type="class")
+confMatrixRF <- confusionMatrix(predictionRanFor, val_data$classe)
+confMatrixRF
+```
+#####The predicted accuracy of the Random Forest Model is 99.44% which is much better than the accuracy using the Decision Tree Model. Given this information I will use the Random Forest Model for the quiz test data.
+
+###Apply Random Forest Model to Test Data
+```{r}
+predictTestData <- predict(RanForModel, newdata=testData)
+predictTestData
+```
+
+###Conclusion
+#####Using the Random Forest Model was a great choice as all 20 predicted values for the Test Data were correct according to the Quiz Submission. For this particular data, using a Decision Tree Model would have been a bad choice proving that testing multiple types of models for your data and checking the accuracy helps avoid using a model that would not accurately predict data as needed.
